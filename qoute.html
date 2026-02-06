@@ -1,148 +1,211 @@
-/***********************************************************
- * pricing.js
- * ---------------------------------------------------------
- * Handles all pricing logic and estimate calculations.
- * Does NOT handle maps, addresses, or GIS lookups directly.
- ***********************************************************/
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Instant Quote | VALDEZTECH Property Solutions</title>
 
-// Global application state (shared across files)
-window.appState = window.appState || {
-  location: {
-    lat: null,
-    lon: null,
-    parcelSqFt: null,
-    buildingSqFt: null
-  },
-  service: null,
-  estimate: null
-};
+    <!-- Bootstrap CSS -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
 
-/**
- * Pricing rules by service type
- */
-const PRICING_RULES = {
-  exterior: {
-    label: "Exterior Surface Cleaning",
-    source: "parcel",
-    rate: 0.12,
-    minimum: 129
-  },
-  driveway: {
-    label: "Driveway Cleaning",
-    source: "parcel",
-    rate: 0.18,
-    minimum: 99
-  },
-  siding: {
-    label: "House Siding Wash",
-    source: "building",
-    rate: 0.20,
-    minimum: 149
-  },
-  sidewalk: {
-    label: "Sidewalk Cleaning",
-    source: "parcel",
-    rate: 0.04,
-    minimum: 79
-  }
-};
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Montserrat:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
 
-/**
- * Fallback sizes (used until GIS resolves)
- */
-const FALLBACK_SIZES = {
-  parcelSqFt: 6500,
-  buildingSqFt: 1800
-};
+    <!-- Azure Maps CSS -->
+    <link
+      rel="stylesheet"
+      href="https://atlas.microsoft.com/sdk/javascript/mapcontrol/3/atlas.min.css"
+    />
 
-/**
- * Redirect to scheduling with estimate + GIS metadata
- */
-function goToScheduling() {
-  const state = window.appState;
+    <!-- Azure Maps JS -->
+    <script src="https://atlas.microsoft.com/sdk/javascript/mapcontrol/3/atlas.min.js"></script>
 
-  if (!state.estimate || !state.service) return;
+    <!-- Brand Styles -->
+    <style>
+      :root {
+        --navy: #0f1e2d;
+        --gray-text: #2e2e2e;
+        --accent: #3fbf7f;
+        --off-white: #f4f6f7;
+      }
 
-  const addressEl = document.getElementById("address");
-  const address = addressEl ? addressEl.value : "";
+      body {
+        font-family: "Inter", system-ui, sans-serif;
+        font-size: 17px;
+        line-height: 1.6;
+        color: var(--gray-text);
+        background-color: var(--off-white);
+      }
 
-  const params = new URLSearchParams({
-    service: state.service,
-    estimate: state.estimate,
-    address,
-    lat: state.location.lat ?? "",
-    lon: state.location.lon ?? "",
-    parcelSqFt: state.location.parcelSqFt ?? "",
-    buildingSqFt: state.location.buildingSqFt ?? "",
-    timestamp: new Date().toISOString()
-  });
+      h1,
+      h2 {
+        font-family: "Montserrat", sans-serif;
+        color: var(--navy);
+        line-height: 1.25;
+      }
 
-  window.location.href = `schedule.html?${params.toString()}`;
-}
+      .navbar {
+        background-color: #ffffff;
+        border-bottom: 1px solid #e5e5e5;
+      }
 
-/**
- * Main estimate calculation
- */
-function calculateEstimate(serviceKey) {
-  const rule = PRICING_RULES[serviceKey];
-  if (!rule) return null;
+      .navbar-brand {
+        font-family: "Montserrat", sans-serif;
+        font-weight: 700;
+        color: var(--navy);
+        letter-spacing: 0.5px;
+      }
 
-  let area =
-    rule.source === "building"
-      ? window.appState.location.buildingSqFt ?? FALLBACK_SIZES.buildingSqFt
-      : window.appState.location.parcelSqFt ?? FALLBACK_SIZES.parcelSqFt;
+      .navbar-nav .nav-link {
+        font-family: "Montserrat", sans-serif;
+        font-weight: 500;
+        font-size: 15px;
+        color: var(--navy);
+      }
 
-  if (!area || area <= 0) return null;
+      .navbar-nav .nav-link:hover {
+        color: var(--accent);
+      }
 
-  let total = area * rule.rate;
-  if (total < rule.minimum) total = rule.minimum;
+      .content-block {
+        max-width: 760px;
+      }
 
-  return Math.round(total);
-}
+      .estimate-box {
+        background: #ffffff;
+        border-radius: 10px;
+        padding: 2rem;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+      }
 
-/**
- * Update estimate display + CTA state
- */
-function updateEstimateUI() {
-  const priceEl = document.getElementById("estimatePrice");
-  const buttonEl = document.getElementById("continueBtn");
+      #map {
+        width: 100%;
+        height: 280px;
+        border-radius: 8px;
+        background: #eef1f3;
+      }
 
-  if (!priceEl || !buttonEl) return;
+      .price-display {
+        font-size: 2.2rem;
+        font-weight: 700;
+        color: var(--navy);
+      }
 
-  const service = window.appState.service;
-  if (!service) {
-    priceEl.textContent = "$—";
-    buttonEl.disabled = true;
-    return;
-  }
+      .text-small {
+        font-size: 14px;
+        color: #555;
+      }
+    </style>
+  </head>
 
-  const estimate = calculateEstimate(service);
-  if (!estimate) {
-    priceEl.textContent = "$—";
-    buttonEl.disabled = true;
-    return;
-  }
+  <body>
+    <!-- NAVBAR -->
+    <nav class="navbar navbar-expand-lg">
+      <div class="container">
+        <a class="navbar-brand" href="index.html">VALDEZTECH</a>
+        <div class="collapse navbar-collapse">
+          <ul class="navbar-nav ms-auto">
+            <li class="nav-item">
+              <a class="nav-link active" href="quote.html">Get a Quote</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="about.html">About</a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </nav>
 
-  window.appState.estimate = estimate;
-  priceEl.textContent = `$${estimate.toLocaleString()}.00`;
-  buttonEl.disabled = false;
-}
+    <!-- HEADER -->
+    <section class="py-5">
+      <div class="container content-block">
+        <h1 class="mb-3">Instant Service Quote</h1>
+        <p class="lead">
+          Select your service and enter your property address to receive an
+          instant estimate powered by public parcel data.
+        </p>
+      </div>
+    </section>
 
-/**
- * UI Event listeners
- */
-document.addEventListener("DOMContentLoaded", () => {
-  const serviceSelect = document.getElementById("serviceType");
-  const continueBtn = document.getElementById("continueBtn");
+    <!-- QUOTE TOOL -->
+    <section class="pb-5">
+      <div class="container content-block">
+        <div class="estimate-box">
 
-  if (serviceSelect) {
-    serviceSelect.addEventListener("change", (e) => {
-      window.appState.service = e.target.value;
-      updateEstimateUI();
-    });
-  }
+          <!-- SERVICE -->
+          <div class="mb-3">
+            <label for="serviceType" class="form-label">Service Type</label>
+            <select id="serviceType" class="form-select">
+              <option selected disabled>Choose a service</option>
+              <option value="exterior">Exterior Surface Cleaning</option>
+              <option value="driveway">Driveway Cleaning</option>
+              <option value="sidewalk">Sidewalk Cleaning</option>
+              <option value="siding">House Siding Wash</option>
+            </select>
+          </div>
 
-  if (continueBtn) {
-    continueBtn.addEventListener("click", goToScheduling);
-  }
-});
+          <!-- ADDRESS -->
+          <div class="mb-4">
+            <label for="address" class="form-label">Service Address</label>
+            <input
+              type="text"
+              id="address"
+              class="form-control"
+              placeholder="1234 Main St, Houston TX"
+            />
+          </div>
+
+          <!-- MAP -->
+          <div class="mb-4">
+            <div id="map"></div>
+          </div>
+
+          <!-- ESTIMATE -->
+          <div class="text-center mb-4">
+            <div class="text-muted">Estimated Total</div>
+            <div class="price-display" id="estimatePrice">$—</div>
+          </div>
+
+          <!-- DISCLAIMER -->
+          <p class="text-small mb-4">
+            Estimates are generated using publicly available GIS data and are
+            subject to verification based on site conditions.
+          </p>
+
+          <!-- CTA -->
+          <div class="d-grid">
+            <button
+              id="continueBtn"
+              class="btn btn-success btn-lg"
+              disabled
+            >
+              Continue to Scheduling
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Azure Maps key -->
+    <script>
+      const AZURE_MAPS_KEY = "PASTE_YOUR_REAL_PRIMARY_KEY_HERE";
+    </script>
+
+    <!-- App logic (order matters) -->
+    <script src="js/maps.js"></script>
+    <script src="js/gis.js"></script>
+    <script src="js/pricing.js"></script>
+  </body>
+</html>
