@@ -144,12 +144,4 @@ function calculatePolygonAreaSqFt(geometry) {
 
   return areaSqFt;
 }
-{
-    "id": "/subscriptions/df8d26ee-02f3-4d55-9828-e12f8d0aa419/resourceGroups/valdeztech-maps",
-    "name": "valdeztech-maps",
-    "type": "Microsoft.Resources/resourceGroups",
-    "location": "westcentralus",
-    "properties": {
-        "provisioningState": "Succeeded"
-    }
-}
+
