@@ -1,230 +1,148 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Instant Estimate | VALDEZTECH Property Solutions</title>
+/***********************************************************
+ * pricing.js
+ * ---------------------------------------------------------
+ * Handles all pricing logic and estimate calculations.
+ * Does NOT handle maps, addresses, or GIS lookups directly.
+ ***********************************************************/
 
-    <!-- Bootstrap CSS -->
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-    />
+// Global application state (shared across files)
+window.appState = window.appState || {
+  location: {
+    lat: null,
+    lon: null,
+    parcelSqFt: null,
+    buildingSqFt: null
+  },
+  service: null,
+  estimate: null
+};
 
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Montserrat:wght@500;600;700&display=swap"
-      rel="stylesheet"
-    />
+/**
+ * Pricing rules by service type
+ */
+const PRICING_RULES = {
+  exterior: {
+    label: "Exterior Surface Cleaning",
+    source: "parcel",
+    rate: 0.12,
+    minimum: 129
+  },
+  driveway: {
+    label: "Driveway Cleaning",
+    source: "parcel",
+    rate: 0.18,
+    minimum: 99
+  },
+  siding: {
+    label: "House Siding Wash",
+    source: "building",
+    rate: 0.20,
+    minimum: 149
+  },
+  sidewalk: {
+    label: "Sidewalk Cleaning",
+    source: "parcel",
+    rate: 0.04,
+    minimum: 79
+  }
+};
 
-    <!-- Brand Styles -->
-    <style>
-      :root {
-        --navy: #0f1e2d;
-        --gray-text: #2e2e2e;
-        --accent: #3fbf7f;
-        --off-white: #f4f6f7;
-      }
+/**
+ * Fallback sizes (used until GIS resolves)
+ */
+const FALLBACK_SIZES = {
+  parcelSqFt: 6500,
+  buildingSqFt: 1800
+};
 
-      body {
-        font-family: "Inter", system-ui, sans-serif;
-        font-size: 17px;
-        line-height: 1.6;
-        color: var(--gray-text);
-        background-color: var(--off-white);
-      }
+/**
+ * Redirect to scheduling with estimate + GIS metadata
+ */
+function goToScheduling() {
+  const state = window.appState;
 
-      h1,
-      h2 {
-        font-family: "Montserrat", sans-serif;
-        color: var(--navy);
-        line-height: 1.25;
-      }
+  if (!state.estimate || !state.service) return;
 
-      .navbar {
-        background-color: #ffffff;
-        border-bottom: 1px solid #e5e5e5;
-      }
+  const addressEl = document.getElementById("address");
+  const address = addressEl ? addressEl.value : "";
 
-      .navbar-brand {
-        font-family: "Montserrat", sans-serif;
-        font-weight: 700;
-        color: var(--navy);
-        letter-spacing: 0.5px;
-      }
+  const params = new URLSearchParams({
+    service: state.service,
+    estimate: state.estimate,
+    address,
+    lat: state.location.lat ?? "",
+    lon: state.location.lon ?? "",
+    parcelSqFt: state.location.parcelSqFt ?? "",
+    buildingSqFt: state.location.buildingSqFt ?? "",
+    timestamp: new Date().toISOString()
+  });
 
-      .navbar-nav .nav-link {
-        font-family: "Montserrat", sans-serif;
-        font-weight: 500;
-        font-size: 15px;
-        color: var(--navy);
-      }
+  window.location.href = `schedule.html?${params.toString()}`;
+}
 
-      .navbar-nav .nav-link:hover {
-        color: var(--accent);
-      }
+/**
+ * Main estimate calculation
+ */
+function calculateEstimate(serviceKey) {
+  const rule = PRICING_RULES[serviceKey];
+  if (!rule) return null;
 
-      .content-block {
-        max-width: 760px;
-      }
+  let area =
+    rule.source === "building"
+      ? window.appState.location.buildingSqFt ?? FALLBACK_SIZES.buildingSqFt
+      : window.appState.location.parcelSqFt ?? FALLBACK_SIZES.parcelSqFt;
 
-      .estimate-box {
-        background: #ffffff;
-        border-radius: 10px;
-        padding: 2rem;
-        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
-      }
+  if (!area || area <= 0) return null;
 
-      #map {
-        width: 100%;
-        height: 280px;
-        background: #eef1f3;
-        border-radius: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #6c757d;
-        font-size: 14px;
-      }
+  let total = area * rule.rate;
+  if (total < rule.minimum) total = rule.minimum;
 
-      .price-display {
-        font-size: 2.2rem;
-        font-weight: 700;
-        color: var(--navy);
-      }
+  return Math.round(total);
+}
 
-      .text-small {
-        font-size: 14px;
-        color: #555;
-      }
-    </style>
-  </head>
+/**
+ * Update estimate display + CTA state
+ */
+function updateEstimateUI() {
+  const priceEl = document.getElementById("estimatePrice");
+  const buttonEl = document.getElementById("continueBtn");
 
-  <body>
-    <!-- NAVBAR -->
-    <nav class="navbar navbar-expand-lg bg-white border-bottom">
-      <div class="container">
-        <a class="navbar-brand fw-bold" href="index.html">VALDEZTECH</a>
+  if (!priceEl || !buttonEl) return;
 
-        <button
-          class="navbar-toggler"
-          type="button"
-          data-bs-toggle="collapse"
-          data-bs-target="#mainNav"
-        >
-          <span class="navbar-toggler-icon"></span>
-        </button>
+  const service = window.appState.service;
+  if (!service) {
+    priceEl.textContent = "$—";
+    buttonEl.disabled = true;
+    return;
+  }
 
-        <div class="collapse navbar-collapse" id="mainNav">
-          <ul class="navbar-nav ms-auto">
-            <li class="nav-item">
-              <a class="nav-link" href="services.html">Services</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="areas.html">Areas We Serve</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="qoute.html">Pricing</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="about.html">About</a>
-            </li>
-          </ul>
-        </div>
-      </div>
-    </nav>
+  const estimate = calculateEstimate(service);
+  if (!estimate) {
+    priceEl.textContent = "$—";
+    buttonEl.disabled = true;
+    return;
+  }
 
-    <!-- PAGE HEADER -->
-    <section class="py-5">
-      <div class="container content-block">
-        <h1 class="mb-4">Instant Service Estimate</h1>
-        <p class="lead">
-          Select your service and enter your property address to receive an
-          estimated price based on available property data.
-        </p>
-      </div>
-    </section>
+  window.appState.estimate = estimate;
+  priceEl.textContent = `$${estimate.toLocaleString()}.00`;
+  buttonEl.disabled = false;
+}
 
-    <!-- ESTIMATE TOOL -->
-    <section class="pb-5">
-      <div class="container content-block">
-        <div class="estimate-box">
+/**
+ * UI Event listeners
+ */
+document.addEventListener("DOMContentLoaded", () => {
+  const serviceSelect = document.getElementById("serviceType");
+  const continueBtn = document.getElementById("continueBtn");
 
-          <!-- SERVICE -->
-          <div class="mb-3">
-            <label for="serviceType" class="form-label">Service Type</label>
-            <select id="serviceType" class="form-select">
-              <option selected disabled>Choose a service</option>
-              <option value="exterior">Exterior Surface Cleaning</option>
-              <option value="driveway">Driveway Cleaning</option>
-              <option value="sidewalk">Sidewalk Cleaning</option>
-              <option value="siding">House Siding Wash</option>
-            </select>
-          </div>
+  if (serviceSelect) {
+    serviceSelect.addEventListener("change", (e) => {
+      window.appState.service = e.target.value;
+      updateEstimateUI();
+    });
+  }
 
-          <!-- ADDRESS -->
-          <div class="mb-4">
-            <label for="address" class="form-label">Service Address</label>
-            <input
-              type="text"
-              id="address"
-              class="form-control"
-              placeholder="1234 Main St, Houston TX"
-            />
-          </div>
-
-          <!-- MAP -->
-          <div class="mb-4">
-            <div id="map">
-              Map preview will appear here
-            </div>
-          </div>
-
-          <!-- ESTIMATE -->
-          <div class="text-center mb-4">
-            <div class="text-muted">Estimated Total</div>
-            <div class="price-display" id="estimatePrice">$—</div>
-          </div>
-
-          <!-- DISCLAIMER -->
-          <p class="text-small mb-4">
-            Estimates are generated using publicly available parcel data.
-            Final pricing may vary depending on surface condition,
-            obstructions, or access limitations.
-          </p>
-
-          <!-- CTA -->
-          <div class="d-grid">
-            <button
-              id="continueBtn"
-              class="btn btn-success btn-lg"
-              disabled
-            >
-              Continue to Scheduling
-            </button>
-          </div>
-
-        </div>
-      </div>
-    </section>
-
-    <!-- Bootstrap JS (UI only) -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="pricing.js"></script>
-     <!-- Azure Maps key -->
-<script>
-  const AZURE_MAPS_KEY = "1VL2HBM2G9ypgYnMndflxtdlaCLmpbxiHONxglu74FXryKokOt7IJQQJ99CBACrJL3J3sUZcAAAgAZMPMu5n";
-</script>
-
-<!-- App logic -->
-<script src="maps.js"></script>
-<script src="gis.js"></script>
-<script src="pricing.js"></script>
-
-  </body>
-</html>
-
-
-
+  if (continueBtn) {
+    continueBtn.addEventListener("click", goToScheduling);
+  }
+});
