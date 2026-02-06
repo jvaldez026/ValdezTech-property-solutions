@@ -20,16 +20,17 @@ let map = null;
 let marker = null;
 
 /**
- * Initialize Azure Map (defensive)
+ * Initialize Azure Map
  */
 function initMap() {
-  // HARD guards (these catch 99% of failures)
+  // Guard: Azure Maps SDK
   if (typeof atlas === "undefined") {
     console.error("❌ Azure Maps SDK not loaded");
     return;
   }
 
-  if (typeof AZURE_MAPS_KEY !== "1VL2HBM2G9ypgYnMndflxtdlaCLmpbxiHONxglu74FXryKokOt7IJQQJ99CBACrJL3J3sUZcAAAgAZMPMu5n" || !AZURE_MAPS_KEY.length) {
+  // Guard: API key
+  if (typeof AZURE_MAPS_KEY !== "string" || AZURE_MAPS_KEY.length < 10) {
     console.error("❌ AZURE_MAPS_KEY missing or invalid");
     return;
   }
@@ -40,11 +41,10 @@ function initMap() {
     return;
   }
 
-  // Clear placeholder text
   mapContainer.innerHTML = "";
 
   map = new atlas.Map(mapContainer, {
-    center: [-95.3698, 29.7604],
+    center: [-95.3698, 29.7604], // Houston
     zoom: 13,
     authOptions: {
       authType: "subscriptionKey",
@@ -61,7 +61,7 @@ function initMap() {
 }
 
 /**
- * Geocode an address using Azure Maps REST API
+ * Geocode address → coordinates
  */
 async function geocodeAddress(address) {
   try {
@@ -70,7 +70,7 @@ async function geocodeAddress(address) {
       "?api-version=1.0" +
       "&countrySet=US" +
       "&limit=1" +
-      "&subscription-key=" + encodeURIComponent(1VL2HBM2G9ypgYnMndflxtdlaCLmpbxiHONxglu74FXryKokOt7IJQQJ99CBACrJL3J3sUZcAAAgAZMPMu5n) +
+      "&subscription-key=" + encodeURIComponent(AZURE_MAPS_KEY) +
       "&query=" + encodeURIComponent(address);
 
     const response = await fetch(url);
@@ -114,7 +114,7 @@ function updateLocation(lat, lon) {
 }
 
 /**
- * Wire address input + map init
+ * Wire events
  */
 document.addEventListener("DOMContentLoaded", () => {
   initMap();
@@ -132,4 +132,3 @@ document.addEventListener("DOMContentLoaded", () => {
     updateLocation(position.lat, position.lon);
   });
 });
-
