@@ -29,7 +29,7 @@ function initMap() {
     return;
   }
 
-  if (typeof AZURE_MAPS_KEY !== "string" || !AZURE_MAPS_KEY.length) {
+  if (typeof AZURE_MAPS_KEY !== "1VL2HBM2G9ypgYnMndflxtdlaCLmpbxiHONxglu74FXryKokOt7IJQQJ99CBACrJL3J3sUZcAAAgAZMPMu5n" || !AZURE_MAPS_KEY.length) {
     console.error("❌ AZURE_MAPS_KEY missing or invalid");
     return;
   }
@@ -70,7 +70,7 @@ async function geocodeAddress(address) {
       "?api-version=1.0" +
       "&countrySet=US" +
       "&limit=1" +
-      "&subscription-key=" + encodeURIComponent(AZURE_MAPS_KEY) +
+      "&subscription-key=" + encodeURIComponent(1VL2HBM2G9ypgYnMndflxtdlaCLmpbxiHONxglu74FXryKokOt7IJQQJ99CBACrJL3J3sUZcAAAgAZMPMu5n) +
       "&query=" + encodeURIComponent(address);
 
     const response = await fetch(url);
@@ -132,3 +132,4 @@ document.addEventListener("DOMContentLoaded", () => {
     updateLocation(position.lat, position.lon);
   });
 });
+
